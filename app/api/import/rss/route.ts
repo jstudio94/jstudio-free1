@@ -1,3 +1,6 @@
+// ✅ Vercel 빌드 검사 프리패스: "미리 검사하지 말고 실제 호출될 때만 실행해!"
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { XMLParser } from "fast-xml-parser";
