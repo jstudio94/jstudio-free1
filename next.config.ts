@@ -17,6 +17,9 @@ const nextConfig = {
     }
     return config;
   },
+
+  // ✅ Vercel 빌드 에러 해결 3단계: 터보팩(Turbopack) 충돌 방지 (방금 뜬 에러 정답지!)
+  turbopack: {},
 };
 
 export default nextConfig;
