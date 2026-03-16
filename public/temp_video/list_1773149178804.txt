@@ -1,0 +1,7 @@
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773149178804_0.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773149178804_1.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773149178804_2.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773149178804_2.jpg'

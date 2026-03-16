@@ -1,0 +1,11 @@
+file 'img_1773145295755_0.jpg'
+duration 12
+file 'img_1773145295755_1.jpg'
+duration 12
+file 'img_1773145295755_2.jpg'
+duration 12
+file 'img_1773145295755_3.jpg'
+duration 12
+file 'img_1773145295755_4.jpg'
+duration 12
+file 'img_1773145295755_4.jpg'

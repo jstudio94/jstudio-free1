@@ -1,0 +1,11 @@
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773148372469_0.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773148372469_1.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773148372469_2.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773148372469_3.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773148372469_4.jpg'
+duration 12
+file 'C:/Users/Vest_VR/jstudio/public/temp_video/img_1773148372469_4.jpg'
