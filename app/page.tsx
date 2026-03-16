@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "./lib/supabase"; // 경로 확인 필요 (app/lib/supabase.ts 기준)
+import { supabase } from "./lib/supabase"; 
 
 type ImageSlot = {
   id: number;
@@ -14,7 +14,7 @@ type ImageSlot = {
 };
 
 export default function HomePage() {
-  // ✅ 유저 세션이 없어도 페이지는 보여주도록 수정 (일반 유저용)
+  // ✅ 게스트 모드 설정을 위해 기본 유저 상태를 부여합니다.
   const [user, setUser] = useState<any>({ email: "guest@jstudio.ai" });
   const router = useRouter();
 
@@ -24,32 +24,20 @@ export default function HomePage() {
 
   const [finalScript, setFinalScript] = useState("");
   const [customPrompt, setCustomPrompt] = useState("");
-
   const [images, setImages] = useState<ImageSlot[]>([]);
   const [audioUrl, setAudioUrl] = useState("");
 
   const [selectedTheme, setSelectedTheme] = useState("제품/광고 🛒");
-  const themes = [
-    "제품/광고 🛒",
-    "괴담/공포 👻",
-    "카페/감성 ☕",
-    "뉴스/정보 📰",
-    "동화/스토리북 📚",
-    "캐릭터/일러스트 🎨",
-  ];
-
+  const themes = ["제품/광고 🛒", "괴담/공포 👻", "카페/감성 ☕", "뉴스/정보 📰", "동화/스토리북 📚", "캐릭터/일러스트 🎨"];
   const [selectedVoice, setSelectedVoice] = useState("nova");
   const [apiProvider, setApiProvider] = useState("google");
   const [googleApiKey, setGoogleApiKey] = useState("");
   const [openaiApiKey, setOpenaiApiKey] = useState("");
-
   const [selectedGoogleModel, setSelectedGoogleModel] = useState("gemini-3.1-flash-image-preview");
   const [selectedOpenAIModel, setSelectedOpenAIModel] = useState("gpt-image-1");
-
   const [promptCount, setPromptCount] = useState("5");
   const [selectedStylePreset, setSelectedStylePreset] = useState("하이퍼리얼리즘");
 
-  // 모델 데이터 스토어
   const googleModels = useMemo(() => [
     { group: "이미지 생성", items: ["gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview", "gemini-2.5-flash-image"] },
     { group: "텍스트/프롬프트 생성", items: ["gemini-2.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"] },
@@ -92,7 +80,7 @@ export default function HomePage() {
     localStorage.setItem("jstudio_openai_model", selectedOpenAIModel);
     localStorage.setItem("jstudio_prompt_count", promptCount);
     localStorage.setItem("jstudio_style_preset", selectedStylePreset);
-    alert("설정이 브라우저에 저장되었습니다.");
+    alert("설정이 이 브라우저에 저장되었습니다.");
   };
 
   const handleDonate = () => {
@@ -101,121 +89,144 @@ export default function HomePage() {
 
   const getCleanScriptLines = () => {
     if (!finalScript) return [];
-    return finalScript.split("\n").map(l => l.replace(/\(.*\)/g, "").trim()).filter(l => l.length > 0);
+    return finalScript.split("\n").map((line) => line.replace(/\(.*\)/g, "").trim()).filter((line) => line.length > 0);
   };
 
-  // 프롬프트 추출 로직
   const handleExtractPrompt = async () => {
-    if (!finalScript.trim()) return alert("대본을 입력하세요.");
-    if (!activeApiKey.trim()) return alert("API Key를 입력하세요.");
-
+    if (!finalScript.trim() || !activeApiKey.trim()) return alert("대본과 API Key를 확인하세요.");
     setIsPromptExtracting(true);
     try {
       const res = await fetch("/api/images/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          script: finalScript,
-          engine: "prompt",
-          category: selectedTheme,
-          stylePreset: selectedStylePreset,
-          promptCount: Number(promptCount),
-          provider: apiProvider,
-          model: activeModel,
-          userApiKey: activeApiKey,
+          script: finalScript, engine: "prompt", category: selectedTheme, stylePreset: selectedStylePreset,
+          promptCount: Number(promptCount), provider: apiProvider, model: activeModel, userApiKey: activeApiKey,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "실패");
-
+      if (!res.ok) throw new Error(data.error || "추출 실패");
       setCustomPrompt(data.extractedPrompt || "");
-      const promptArray = (data.extractedPrompt || "").split("\n")
-        .filter((l: string) => l.trim().length > 10)
-        .map((l: string) => l.replace(/^\d+\.\s*/, "").trim())
-        .slice(0, Number(promptCount));
-
-      setImages(promptArray.map((p: string, i: number) => ({
-        id: i + 1, finalInput: p, url: "", selected: true, isLoading: false
-      })));
-    } catch (e: any) {
-      alert(e.message);
+      const promptArray = (data.extractedPrompt || "").split("\n").filter((line: string) => line.trim().length > 10).map((line: string) => line.replace(/^\d+\.\s*/, "").trim()).slice(0, Number(promptCount));
+      setImages(promptArray.map((prompt: string, index: number) => ({ id: index + 1, finalInput: prompt, url: "", selected: true, isLoading: false })));
+    } catch (error: any) {
+      alert(error.message);
     } finally {
       setIsPromptExtracting(false);
     }
   };
 
-  // 단일 이미지 생성
   const handleRegenerateSingle = async (id: number) => {
-    const target = images.find(img => img.id === id);
+    const target = images.find((img) => img.id === id);
     if (!target || !activeApiKey.trim()) return;
-
-    setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: true, error: "" } : img));
-
+    setImages((prev) => prev.map((img) => img.id === id ? { ...img, isLoading: true, error: "" } : img));
     try {
       const res = await fetch("/api/images/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customPrompt: target.finalInput,
-          engine: "whisk",
-          provider: apiProvider,
-          model: activeModel,
-          userApiKey: activeApiKey,
-          stylePreset: selectedStylePreset,
-          promptCount: 1,
-        }),
+        body: JSON.stringify({ customPrompt: target.finalInput, engine: "whisk", provider: apiProvider, model: activeModel, userApiKey: activeApiKey, stylePreset: selectedStylePreset, promptCount: 1 }),
       });
       const data = await res.json();
-      setImages(prev => prev.map(img => img.id === id ? { 
-        ...img, url: data.imageUrls?.[0] || "", isLoading: false, error: data.errors?.[0] || "" 
-      } : img));
-    } catch (e: any) {
-      setImages(prev => prev.map(img => img.id === id ? { ...img, isLoading: false, error: e.message } : img));
+      setImages((prev) => prev.map((img) => img.id === id ? { ...img, url: data.imageUrls?.[0] || "", isLoading: false, error: data.errors?.[0] || "" } : img));
+    } catch (err: any) {
+      setImages((prev) => prev.map((img) => img.id === id ? { ...img, isLoading: false, error: err.message } : img));
     }
   };
 
   const handleMakeAllImages = async () => {
-    const targets = images.filter(img => img.selected);
+    const targets = images.filter((img) => img.selected);
     if (targets.length === 0) return alert("선택된 이미지가 없습니다.");
     setIsWhiskWorking(true);
-    for (const img of targets) {
-      await handleRegenerateSingle(img.id);
-    }
+    for (const img of targets) { await handleRegenerateSingle(img.id); }
     setIsWhiskWorking(false);
   };
 
   const handleMakeTTS = async () => {
-    if (!finalScript.trim()) return alert("대본이 없습니다.");
+    if (!finalScript.trim()) return alert("대본이 비어있습니다.");
     setIsTTSWorking(true);
     try {
-      const res = await fetch("/api/tts/make", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: finalScript, voice: selectedVoice }),
-      });
+      const res = await fetch("/api/tts/make", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: finalScript, voice: selectedVoice }) });
       const data = await res.json();
       setAudioUrl(data.url || "");
-    } finally {
-      setIsTTSWorking(false);
-    }
+    } finally { setIsTTSWorking(false); }
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900">
       <div className="max-w-[1600px] mx-auto px-6 py-8 space-y-6">
-        {/* 헤더 및 레이아웃 생략 (기존 코드와 동일) */}
-        {/* ... (보내주신 디자인 코드 그대로 적용) ... */}
-        {/* UI 부분은 보내주신 코드의 return 내부를 그대로 사용하시면 됩니다! */}
         <header className="bg-white border border-slate-200 rounded-2xl px-6 py-5 shadow-sm">
-           <h1 className="text-3xl font-bold">J-STUDIO Free Creator Tool</h1>
-           <p className="text-slate-500">대본만 입력하면 AI가 이미지를 그려줍니다.</p>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h1 className="text-3xl font-bold tracking-tight text-slate-900">J-STUDIO Free Creator Tool</h1>
+                <p className="mt-1 text-sm text-slate-500">대본 기반 이미지 생성 툴 (게스트 모드)</p>
+              </div>
+              <button onClick={handleDonate} className="px-5 py-3 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700">후원하기</button>
+            </div>
+          </div>
         </header>
 
         <div className="grid grid-cols-12 gap-6">
-           {/* 왼쪽 설정창, 중앙 작업창, 오른쪽 음성창 등 보내주신 UI 코드를 여기에 넣으세요 */}
-           <p className="col-span-12 p-10 bg-white rounded-2xl shadow-sm text-center">
-             🚀 유저용 메인 페이지 배포 완료! 이제 대본을 입력하고 시작해보세요.
-           </p>
+          {/* 1. 왼쪽 설정창 */}
+          <div className="col-span-12 lg:col-span-4 space-y-6">
+            <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <h2 className="text-sm font-semibold mb-4">AI 사용 설정</h2>
+              <div className="space-y-4">
+                <select value={apiProvider} onChange={(e) => setApiProvider(e.target.value)} className="w-full border border-slate-300 px-4 py-3 rounded-xl text-sm outline-none">
+                  <option value="google">Google AI Studio</option>
+                  <option value="openai">OpenAI GPT</option>
+                </select>
+                <input type="password" value={activeApiKey} onChange={(e) => apiProvider === "google" ? setGoogleApiKey(e.target.value) : setOpenaiApiKey(e.target.value)} placeholder="API Key 입력" className="w-full border border-slate-300 px-4 py-3 rounded-xl text-sm outline-none" />
+                <button onClick={handleSaveLocalSettings} className="w-full py-3 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800">설정 저장</button>
+              </div>
+            </section>
+            
+            <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <h2 className="text-sm font-semibold mb-4">대본 입력</h2>
+              <textarea className="w-full h-[400px] border border-slate-300 p-4 rounded-xl text-sm outline-none resize-none leading-relaxed" value={finalScript} onChange={(e) => setFinalScript(e.target.value)} placeholder="대본을 입력하세요..." />
+              <button onClick={handleExtractPrompt} disabled={isPromptExtracting} className="w-full mt-4 py-3 rounded-xl bg-slate-900 text-white text-sm font-semibold disabled:opacity-50">
+                {isPromptExtracting ? "추출 중..." : "프롬프트 추출"}
+              </button>
+            </section>
+          </div>
+
+          {/* 2. 중앙 이미지 작업창 */}
+          <div className="col-span-12 lg:col-span-5 space-y-6">
+            <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-semibold">이미지 작업</h2>
+                <button onClick={handleMakeAllImages} disabled={isWhiskWorking || images.length === 0} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm disabled:opacity-50">전체 이미지 생성</button>
+              </div>
+              <div className="space-y-4 h-[800px] overflow-y-auto">
+                {images.map((img, index) => (
+                  <div key={img.id} className="p-4 border border-slate-200 rounded-2xl bg-white shadow-sm">
+                    <div className="flex gap-4">
+                      <div className="w-24 h-40 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0">
+                        {img.url ? <img src={img.url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-400">No Image</div>}
+                      </div>
+                      <div className="flex-1">
+                        <textarea className="w-full h-24 border border-slate-300 p-2 rounded-lg text-xs outline-none" value={img.finalInput} onChange={(e) => setImages(prev => prev.map(i => i.id === img.id ? {...i, finalInput: e.target.value} : i))} />
+                        <button onClick={() => handleRegenerateSingle(img.id)} className="mt-2 text-xs font-semibold text-blue-600">이 장면만 생성</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          {/* 3. 오른쪽 음성 및 후원 */}
+          <div className="col-span-12 lg:col-span-3 space-y-6">
+            <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <h2 className="text-sm font-semibold mb-4">음성 및 후원</h2>
+              <button onClick={handleMakeTTS} disabled={isTTSWorking} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-sm mb-4">TTS 생성</button>
+              {audioUrl && <audio controls src={audioUrl} className="w-full" />}
+              <div className="mt-6 p-4 bg-violet-50 rounded-xl border border-violet-100">
+                <p className="text-xs text-violet-700 leading-relaxed">여러분의 소중한 후원이 J-STUDIO를 지속하게 합니다. ❤️</p>
+                <button onClick={handleDonate} className="w-full mt-3 py-2 bg-violet-600 text-white rounded-lg text-xs font-bold">후원하러 가기</button>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>
