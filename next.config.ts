@@ -4,8 +4,19 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // ✅ Vercel 빌드 에러 해결: "비디오 관련 무거운 프로그램들은 포장(검사)하지 말고 그냥 넘어가!"
+  
+  // ✅ Vercel 빌드 에러 해결 1단계: Next.js 기본 무시
   serverExternalPackages: ['@ffmpeg-installer/ffmpeg', 'fluent-ffmpeg'],
+  
+  // ✅ Vercel 빌드 에러 해결 2단계 (진짜 핵폭탄): 웹팩(Webpack) 포장 시스템에서 아예 투명인간 취급하기
+  // 🚨 추가된 부분: config와 isServer에 ': any' 이름표를 붙여서 TypeScript 문법 에러 완벽 해결!
+  webpack: (config: any, { isServer }: any) => {
+    if (isServer) {
+      // 서버에서 돌아갈 때 저 두 녀석은 절대 건드리지 말고 무시해! 라고 강제 명령
+      config.externals.push('@ffmpeg-installer/ffmpeg', 'fluent-ffmpeg');
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
