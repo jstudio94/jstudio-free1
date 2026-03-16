@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// ✅ 1. Vercel 빌드 시 이 API를 미리 실행하지 않도록 강제 (빌드 에러 방지 필살기)
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
+    // ✅ 2. OpenAI 초기화를 함수 내부로 이동 (Key가 없어도 빌드는 통과하게 만듦)
+    const apiKey = process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      console.error("OPENAI_API_KEY가 설정되지 않았습니다.");
+      return NextResponse.json({ error: "API Key missing" }, { status: 500 });
+    }
+
+    const openai = new OpenAI({ apiKey });
+
     const { storyContent, artStyle, subStyle } = await req.json();
 
-    // 1. 스타일별 프롬프트 가이드 설정
+    // 1. 스타일별 프롬프트 가이드 설정 (E님의 로직 유지)
     const styleGuide = subStyle === "한국형" 
       ? `
         [STYLE: KOREAN HORROR (K-HORROR)]
@@ -31,7 +42,7 @@ export async function POST(req: Request) {
 [필수 지시 사항]:
 1. 현재 선택된 서브 스타일은 [${subStyle}]이야.
 2. 아래 가이드를 엄격히 준수하여 영문 프롬프트를 작성해:
-   ${styleGuide}
+    ${styleGuide}
 3. ${subStyle === "한국형" ? "반드시 'South Korean' 단어를 포함하고 서양 요소를 배제해." : "한국적 요소를 완전히 배제해."}
 
 반드시 이 JSON 구조로 응답해:
