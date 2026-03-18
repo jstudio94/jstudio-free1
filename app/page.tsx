@@ -107,17 +107,14 @@ export default function HomePage() {
         } = await supabase.auth.getSession();
 
         if (!session) {
-          // ✅ 배포 시 로그인이 없어도 툴을 사용할 수 있게 가상 유저를 할당합니다.
           setUser({ email: "admin@jstudio.ai" });
         } else {
           setUser(session.user);
         }
       } catch (e) {
-        console.error("세션 확인 오류:", e);
         setUser({ email: "admin@jstudio.ai" });
       }
     };
-
     init();
   }, [router]);
 
@@ -163,8 +160,8 @@ export default function HomePage() {
   };
 
   const handleExtractPrompt = async () => {
-    if (!finalScript.trim()) { alert("대본을 먼저 입력해주세요."); return; }
-    if (!activeApiKey.trim()) { alert("API Key를 먼저 입력하세요."); return; }
+    if (!finalScript.trim()) return alert("대본을 먼저 입력해주세요.");
+    if (!activeApiKey.trim()) return alert("API Key를 먼저 입력하세요.");
     setIsPromptExtracting(true);
     try {
       const res = await fetch("/api/images/generate", {
@@ -178,32 +175,24 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "프롬프트 추출 실패");
-      const extractedPromptText = data.extractedPrompt || "";
-      setCustomPrompt(extractedPromptText);
-      const promptArray = extractedPromptText.split("\n")
+      setCustomPrompt(data.extractedPrompt || "");
+      const promptArray = (data.extractedPrompt || "").split("\n")
         .filter((line: string) => line.trim().match(/^\d+\./) || line.trim().length > 10)
         .map((line: string) => line.replace(/^\d+\.\s*/, "").trim())
         .slice(0, Number(promptCount));
-      const initialSlots: ImageSlot[] = promptArray.map((prompt: string, index: number) => ({
+      setImages(promptArray.map((prompt: string, index: number) => ({
           id: index + 1, finalInput: prompt, url: "", selected: true, isLoading: false, error: "",
-      }));
-      setImages(initialSlots);
+      })));
     } catch (error: any) {
-      console.error("프롬프트 추출 오류:", error);
       alert(error.message || "오류 발생");
     } finally { setIsPromptExtracting(false); }
   };
 
   const handleRegenerateSingle = async (id: number) => {
     const target = images.find((img) => img.id === id);
-    if (!target || !target.finalInput.trim()) { alert("프롬프트 내용이 없습니다."); return; }
-    if (!activeApiKey.trim()) { alert("API Key를 먼저 입력하세요."); return; }
+    if (!target || !target.finalInput.trim() || !activeApiKey.trim()) return;
     setImages((prev) => prev.map((img) => img.id === id ? { ...img, isLoading: true, error: "" } : img));
     try {
-      if (target.finalInput.trim().startsWith("data:image/")) {
-        setImages((prev) => prev.map((img) => img.id === id ? { ...img, url: target.finalInput.trim(), isLoading: false, error: "" } : img));
-        return;
-      }
       const res = await fetch("/api/images/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,42 +202,25 @@ export default function HomePage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "이미지 생성 실패");
-      const newUrl = data.imageUrls?.[0] || "";
-      const newError = data.errors?.[0] || "";
-      if (!newUrl) throw new Error(newError || "이미지 데이터 없음");
-      setImages((prev) => prev.map((img) => img.id === id ? { ...img, url: newUrl, isLoading: false, error: newError || "" } : img));
+      setImages((prev) => prev.map((img) => img.id === id ? { 
+        ...img, url: data.imageUrls?.[0] || "", isLoading: false, error: data.errors?.[0] || "" 
+      } : img));
     } catch (err: any) {
-      setImages((prev) => prev.map((img) => img.id === id ? { ...img, isLoading: false, error: err.message || "실패" } : img));
+      setImages((prev) => prev.map((img) => img.id === id ? { ...img, isLoading: false, error: err.message } : img));
     }
-  };
-
-  const runWithConcurrency = async (ids: number[], limit: number) => {
-    let currentIndex = 0;
-    const worker = async () => {
-      while (currentIndex < ids.length) {
-        const id = ids[currentIndex];
-        currentIndex += 1;
-        await handleRegenerateSingle(id);
-      }
-    };
-    const workerCount = Math.min(limit, ids.length);
-    await Promise.all(Array.from({ length: workerCount }, () => worker()));
   };
 
   const handleMakeAllImages = async () => {
     const targets = images.filter((img) => img.selected);
-    if (targets.length === 0) { alert("선택된 이미지가 없습니다."); return; }
-    if (!activeApiKey.trim()) { alert("API Key를 먼저 입력하세요."); return; }
+    if (targets.length === 0) return alert("선택된 이미지가 없습니다.");
     setIsWhiskWorking(true);
     try {
-      const ids = targets.map((item) => item.id);
-      await runWithConcurrency(ids, 3);
+      for (const target of targets) { await handleRegenerateSingle(target.id); }
     } finally { setIsWhiskWorking(false); }
   };
 
   const handleMakeTTS = async () => {
-    if (!finalScript.trim()) { alert("대본이 비어있습니다."); return; }
+    if (!finalScript.trim()) return alert("대본이 비어있습니다.");
     setIsTTSWorking(true);
     try {
       const res = await fetch("/api/tts/make", {
@@ -257,11 +229,19 @@ export default function HomePage() {
         body: JSON.stringify({ text: finalScript, voice: selectedVoice }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "TTS 생성 실패");
       setAudioUrl(data.url || "");
-    } catch (error: any) {
-      alert(error.message || "TTS 생성 중 오류");
     } finally { setIsTTSWorking(false); }
+  };
+
+  // ✅ 음성 파일 다운로드 함수 추가
+  const handleDownloadAudio = () => {
+    if (!audioUrl) return;
+    const link = document.createElement("a");
+    link.href = audioUrl;
+    link.download = `jstudio-tts-${Date.now()}.mp3`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleInputPathChange = (id: number, newValue: string) => {
@@ -273,14 +253,12 @@ export default function HomePage() {
   };
 
   const handleDownloadImage = async (url: string, index: number) => {
-    try {
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `jstudio-image-${index + 1}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error: any) { alert(`다운로드 실패: ${error.message}`); }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `jstudio-image-${index + 1}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (!user) {
@@ -295,19 +273,18 @@ export default function HomePage() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900">J-STUDIO Free Creator Tool</h1>
-                <p className="mt-1 text-sm text-slate-500">Google API와 GPT API를 모두 사용할 수 있는 무료 배포형 대본 기반 이미지 생성 툴</p>
+                <p className="mt-1 text-sm text-slate-500">Google API와 GPT API 통합 무료 배포형 이미지 생성 툴</p>
               </div>
               <button type="button" onClick={handleDonate} className="px-5 py-3 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors">후원하기</button>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-sm text-slate-700 leading-relaxed">본 프로그램은 무료프로그램입니다. 서버비, 개발비, 유지비용, 업데이트 모두 여러분의 후원으로 운영됩니다.</p>
+              <p className="text-sm text-slate-700 leading-relaxed">본 프로그램은 여러분의 후원으로 운영됩니다.</p>
               <button type="button" onClick={handleDonate} className="mt-3 text-sm font-semibold text-violet-700 hover:text-violet-800">투네이션으로 응원하기</button>
             </div>
           </div>
         </header>
 
         <div className="grid grid-cols-12 gap-6">
-          {/* 1. 사이드바 설정 영역 */}
           <div className="col-span-12 lg:col-span-4 space-y-6">
             <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-800 mb-4">AI 사용 설정</h2>
@@ -319,27 +296,7 @@ export default function HomePage() {
                     <option value="openai">OpenAI GPT</option>
                   </select>
                 </div>
-                {apiProvider === "google" ? (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 mb-2">Google API Key</p>
-                    <input type="password" value={googleApiKey} onChange={(e) => setGoogleApiKey(e.target.value)} placeholder="Google API Key 입력" className="w-full bg-white border border-slate-300 px-4 py-3 rounded-xl text-sm outline-none focus:border-blue-500" />
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 mb-2">OpenAI API Key</p>
-                    <input type="password" value={openaiApiKey} onChange={(e) => setOpenaiApiKey(e.target.value)} placeholder="OpenAI API Key 입력" className="w-full bg-white border border-slate-300 px-4 py-3 rounded-xl text-sm outline-none focus:border-blue-500" />
-                  </div>
-                )}
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-2">사용 모델</p>
-                  <select value={apiProvider === "google" ? selectedGoogleModel : selectedOpenAIModel} onChange={(e) => apiProvider === "google" ? setSelectedGoogleModel(e.target.value) : setSelectedOpenAIModel(e.target.value)} className="w-full bg-white border border-slate-300 px-4 py-3 rounded-xl text-sm outline-none focus:border-blue-500">
-                    {(apiProvider === "google" ? googleModels : openaiModels).map((group) => (
-                      <optgroup key={group.group} label={group.group}>
-                        {group.items.map((model) => <option key={model} value={model}>{model}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
+                <input type="password" value={apiProvider === "google" ? googleApiKey : openaiApiKey} onChange={(e) => apiProvider === "google" ? setGoogleApiKey(e.target.value) : setOpenaiApiKey(e.target.value)} placeholder="API Key 입력" className="w-full bg-white border border-slate-300 px-4 py-3 rounded-xl text-sm outline-none focus:border-blue-500" />
                 <button onClick={handleSaveLocalSettings} className="w-full py-3 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800">설정 저장</button>
               </div>
             </section>
@@ -368,20 +325,19 @@ export default function HomePage() {
 
             <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-800 mb-3">대본 입력</h2>
-              <textarea className="w-full h-[520px] bg-white border border-slate-300 p-4 rounded-xl text-sm outline-none resize-none focus:border-blue-500 leading-relaxed" value={finalScript} onChange={(e) => setFinalScript(e.target.value)} placeholder="여기에 직접 대본을 붙여넣으세요" />
-              <button onClick={handleExtractPrompt} disabled={isPromptExtracting} className="w-full mt-4 py-3 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-60">{isPromptExtracting ? "프롬프트 추출 중..." : "대본 분석 후 프롬프트 추출"}</button>
+              <textarea className="w-full h-[520px] bg-white border border-slate-300 p-4 rounded-xl text-sm outline-none resize-none focus:border-blue-500 leading-relaxed" value={finalScript} onChange={(e) => setFinalScript(e.target.value)} placeholder="대본을 붙여넣으세요" />
+              <button onClick={handleExtractPrompt} disabled={isPromptExtracting} className="w-full mt-4 py-3 rounded-xl bg-slate-900 text-white text-sm font-semibold disabled:opacity-60">{isPromptExtracting ? "추출 중..." : "프롬프트 추출"}</button>
             </section>
           </div>
 
-          {/* 2. 중앙 이미지 리스트 영역 */}
           <div className="col-span-12 lg:col-span-5 space-y-6">
             <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-sm font-semibold text-slate-800">프롬프트 및 이미지 작업</h2>
-                <button onClick={handleMakeAllImages} disabled={isWhiskWorking || images.length === 0} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-60">{isWhiskWorking ? "생성 중..." : "전체 이미지 생성"}</button>
+                <h2 className="text-sm font-semibold text-slate-800">이미지 작업</h2>
+                <button onClick={handleMakeAllImages} disabled={isWhiskWorking || images.length === 0} className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-medium disabled:opacity-60">{isWhiskWorking ? "생성 중..." : "전체 이미지 생성"}</button>
               </div>
               <div className="space-y-4 h-[860px] overflow-y-auto pr-1">
-                {images.length === 0 && <div className="border border-dashed border-slate-300 rounded-2xl p-10 text-center text-sm text-slate-400">프롬프트를 추출하면 이 영역에 이미지 작업 카드가 표시됩니다.</div>}
+                {images.length === 0 && <div className="border border-dashed border-slate-300 rounded-2xl p-10 text-center text-sm text-slate-400">프롬프트를 추출하면 여기에 표시됩니다.</div>}
                 {images.map((img, index) => {
                   const scriptLines = getCleanScriptLines();
                   const matchedSubtitle = scriptLines[index] || "대본 없음";
@@ -389,21 +345,20 @@ export default function HomePage() {
                     <div key={img.id} className={`grid grid-cols-12 gap-4 rounded-2xl border p-4 transition-all ${img.selected ? "border-blue-300 bg-blue-50/40" : "border-slate-200 bg-white"}`}>
                       <div className="col-span-4">
                         <div className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
-                          {img.isLoading ? <div className="absolute inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin" /></div> : img.url ? <img src={img.url} alt={`image-${img.id}`} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">이미지 없음</div>}
+                          {img.isLoading ? <div className="absolute inset-0 flex items-center justify-center animate-spin">🌀</div> : img.url ? <img src={img.url} alt={`image-${img.id}`} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">이미지 없음</div>}
                         </div>
                       </div>
                       <div className="col-span-8 flex flex-col justify-between">
                         <div>
-                          <div className="flex items-center justify-between mb-2 gap-2">
+                          <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-semibold text-slate-500">생성 프롬프트</span>
-                            <div className="flex items-center gap-1 flex-wrap justify-end">
-                              <button onClick={() => handleToggleImageSelected(img.id)} className={`px-2 py-1 rounded text-[10px] font-medium border ${img.selected ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-600 border-slate-300"}`}>{img.selected ? "선택됨" : "해제됨"}</button>
-                              <button onClick={() => handleRegenerateSingle(img.id)} className="px-2 py-1 rounded text-[10px] font-medium border border-slate-300 bg-white text-slate-700">재생성</button>
-                              {img.url && <button onClick={() => handleDownloadImage(img.url, index)} className="px-2 py-1 rounded text-[10px] font-medium border border-slate-300 bg-white text-slate-700">저장</button>}
+                            <div className="flex gap-1">
+                              <button onClick={() => handleToggleImageSelected(img.id)} className="px-2 py-1 text-[10px] border border-slate-300 rounded bg-white">{img.selected ? "선택됨" : "해제됨"}</button>
+                              <button onClick={() => handleRegenerateSingle(img.id)} className="px-2 py-1 text-[10px] border border-slate-300 rounded bg-white">재생성</button>
+                              {img.url && <button onClick={() => handleDownloadImage(img.url, index)} className="px-2 py-1 text-[10px] border border-slate-300 rounded bg-white">저장</button>}
                             </div>
                           </div>
                           <textarea className="w-full h-24 bg-white border border-slate-300 p-3 rounded-xl text-xs text-slate-700 outline-none resize-none focus:border-blue-500" value={img.finalInput} onChange={(e) => handleInputPathChange(img.id, e.target.value)} />
-                          {img.error && <div className="mt-2 text-[10px] text-red-600 bg-red-50 p-1 rounded">{img.error}</div>}
                         </div>
                         <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[11px] font-semibold text-slate-500 mb-1">연결된 대본</p><span className="text-sm font-medium text-slate-800 line-clamp-2">{matchedSubtitle}</span></div>
                       </div>
@@ -414,12 +369,11 @@ export default function HomePage() {
             </section>
           </div>
 
-          {/* 3. 오른쪽 유틸리티 영역 */}
           <div className="col-span-12 lg:col-span-3 space-y-6">
             <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
               <h2 className="text-sm font-semibold text-slate-800 mb-4">음성 옵션</h2>
               <div className="space-y-4">
-                <select className="w-full bg-white border border-slate-300 px-3 py-2 rounded-xl text-sm outline-none" value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)}>
+                <select className="w-full bg-white border border-slate-300 px-3 py-2 rounded-xl text-sm outline-none focus:border-blue-500" value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)}>
                   <option value="nova">Nova</option>
                   <option value="onyx">Onyx</option>
                 </select>
@@ -427,18 +381,25 @@ export default function HomePage() {
               </div>
             </section>
 
-            <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-800 mb-3">무료 프로그램 후원</h2>
-              <p className="text-sm leading-relaxed text-slate-600 mb-4">서버비, 개발비, 유지비용 모두 여러분의 후원으로 운영됩니다.</p>
-              <button type="button" onClick={handleDonate} className="w-full py-3 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700">후원하기</button>
-            </section>
-
+            {/* ✅ 음성 생성 결과 및 다운로드 버튼 추가 영역 */}
             {audioUrl && (
               <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                 <h2 className="text-sm font-semibold text-slate-800 mb-3">생성된 음성</h2>
-                <audio controls src={audioUrl} className="w-full" />
+                <audio controls src={audioUrl} className="w-full mb-3" />
+                <button
+                  onClick={handleDownloadAudio}
+                  className="w-full py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold hover:bg-slate-200 transition-colors"
+                >
+                  음성 파일 다운로드 (.mp3)
+                </button>
               </section>
             )}
+
+            <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-800 mb-3">무료 프로그램 후원</h2>
+              <p className="text-sm leading-relaxed text-slate-600 mb-4">서버비, 개발비 모두 여러분의 후원으로 운영됩니다.</p>
+              <button type="button" onClick={handleDonate} className="w-full py-3 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700">후원하기</button>
+            </section>
 
             {customPrompt && (
               <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
